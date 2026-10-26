@@ -48,7 +48,7 @@ export function updateTaskBody(taskId, body) {
 }
 
 /**
- * Runs a CLI transition on a task.
+ * Runs a CLI transition on a task; `by` adds blockers for block and removes them for unblock.
  * @param {string} taskId
  * @param {{action: 'start' | 'unblock' | 'hold' | 'resume' | 'done' | 'block', summary?: string, by?: string[]}} payload
  * @returns {Promise<{ok: boolean, output: string}>}

@@ -40,6 +40,8 @@ ACTIVE_FILE="$QUEUE_DIR/active"
 DEPS_DIR="$QUEUE_DIR/deps"
 STATUSES="ready in-progress blocked on-hold done"
 TODAY=$(date +%Y-%m-%d)
+NORMALIZED_IDS=''
+CLEARED_IDS=''
 
 die() { printf 'queue: %s\n' "$*" >&2; exit 1; }
 
@@ -59,7 +61,10 @@ usage() {
     --on-hold                    Create the task on hold
   start <id>                     Move a ready task to in-progress (up to wipLimit)
   block <id> --by Q-0001,...     Add blockers and mark it blocked
+  block <id> --remove Q-0001,... Remove blockers; a blocked task with none
+                                 left open moves to ready
   unblock <id>                   Move to ready once every blocker is done
+  unblock <id> --by Q-0001,...   Same as block <id> --remove
   hold <id>                      Park an open task on hold
   resume <id>                    Return a held task to ready
   done <id> [--summary "text"]   Mark done and auto-unblock dependents
@@ -88,22 +93,44 @@ ensure_layout() {
 
 acquire_lock() {
   _lock_attempt=0
-  while ! mkdir "$QUEUE_DIR/.lock" 2>/dev/null; do
+  # noclobber makes the shell open with O_EXCL; uutils mkdir exits 0 when it loses the race.
+  while ! (set -C; printf '%s\n' "$$" > "$QUEUE_DIR/.lock") 2>/dev/null; do
     _lock_attempt=$((_lock_attempt + 1))
     if [ "$_lock_attempt" -ge 100 ]; then
-      if find "$QUEUE_DIR/.lock" -mmin +1 -print -quit 2>/dev/null | grep -q .; then
-        rmdir "$QUEUE_DIR/.lock" 2>/dev/null || true
+      if is_stale "$QUEUE_DIR/.lock"; then
+        break_stale_lock
         continue
       fi
       die "lock timeout"
     fi
     sleep 0.1 2>/dev/null || sleep 1
   done
-  trap 'rmdir "$QUEUE_DIR/.lock" 2>/dev/null || true' EXIT INT TERM
+  trap 'remove_lock' EXIT
+  trap 'trap - EXIT; remove_lock; exit 130' INT TERM
 }
 
 release_lock() {
-  rmdir "$QUEUE_DIR/.lock" 2>/dev/null || true
+  trap - EXIT INT TERM
+  remove_lock
+}
+
+remove_lock() {
+  # A directory is the lock format of earlier versions.
+  rm -f "$QUEUE_DIR/.lock" 2>/dev/null || rmdir "$QUEUE_DIR/.lock" 2>/dev/null || true
+}
+
+is_stale() {
+  find "$1" -prune -mmin +1 -print 2>/dev/null | grep -q .
+}
+
+break_stale_lock() {
+  # Renaming is atomic, so only one waiter takes the stale lock away.
+  _bs_taken="$QUEUE_DIR/.lock.stale.$$"
+  mv "$QUEUE_DIR/.lock" "$_bs_taken" 2>/dev/null || return 0
+  if ! is_stale "$_bs_taken"; then
+    (set -C; cat "$_bs_taken" > "$QUEUE_DIR/.lock") 2>/dev/null
+  fi
+  rm -rf "$_bs_taken"
 }
 
 wip_limit() {
@@ -251,6 +278,127 @@ remove_line() {
 remove_dep() {
   remove_line "$DEPS_DIR/$2.blocked-by" "$1"
   remove_line "$DEPS_DIR/$1.blocks" "$2"
+}
+
+normalize_ids() {
+  NORMALIZED_IDS=''
+  # Globbing off: a value such as "*" must reach valid_id, not expand to filenames.
+  set -f
+  for _ni_id in $(printf '%s' "$1" | tr ',' ' '); do
+    _ni_id=$(printf '%s' "$_ni_id" | tr '[:lower:]' '[:upper:]')
+    valid_id "$_ni_id" || { set +f; die "invalid blocker id: $_ni_id"; }
+    case " $NORMALIZED_IDS " in
+      *" $_ni_id "*) ;;
+      *) NORMALIZED_IDS="$NORMALIZED_IDS $_ni_id" ;;
+    esac
+  done
+  set +f
+  [ -n "$NORMALIZED_IDS" ] || die "$2"
+}
+
+reaches() {
+  _re_target=$2
+  _re_pending=$1
+  _re_seen=" $1 "
+  while [ -n "$_re_pending" ]; do
+    _re_node=${_re_pending%% *}
+    _re_pending=${_re_pending#"$_re_node"}
+    _re_pending=${_re_pending# }
+    [ "$_re_node" = "$_re_target" ] && return 0
+    [ -f "$DEPS_DIR/$_re_node.blocks" ] || continue
+    while IFS= read -r _re_next; do
+      [ -n "$_re_next" ] || continue
+      case "$_re_seen" in *" $_re_next "*) continue ;; esac
+      _re_seen="$_re_seen$_re_next "
+      _re_pending="$_re_pending $_re_next"
+    done < "$DEPS_DIR/$_re_node.blocks"
+    _re_pending=${_re_pending# }
+  done
+  return 1
+}
+
+unresolved_blockers() {
+  _ur_count=0
+  if [ -s "$DEPS_DIR/$1.blocked-by" ]; then
+    while IFS= read -r _ur_blocker; do
+      [ -n "$_ur_blocker" ] || continue
+      if find_task "$_ur_blocker"; then
+        [ "$TASK_STATUS" = done ] || _ur_count=$((_ur_count + 1))
+      else
+        _ur_count=$((_ur_count + 1))
+      fi
+    done < "$DEPS_DIR/$1.blocked-by"
+  fi
+  printf '%s\n' "$_ur_count"
+}
+
+clear_blockers() {
+  [ -s "$DEPS_DIR/$1.blocked-by" ] || { rm -f "$DEPS_DIR/$1.blocked-by"; return 0; }
+  _cb_list="$DEPS_DIR/.clear.$$"
+  cp "$DEPS_DIR/$1.blocked-by" "$_cb_list" || die "cannot read blockers of $1"
+  while IFS= read -r _cb_blocker; do
+    [ -n "$_cb_blocker" ] || continue
+    remove_dep "$_cb_blocker" "$1"
+    CLEARED_IDS="$CLEARED_IDS $_cb_blocker"
+  done < "$_cb_list"
+  rm -f "$_cb_list" "$DEPS_DIR/$1.blocked-by"
+}
+
+dep_list() {
+  if [ -s "$1" ]; then
+    paste -sd ',' "$1" | sed 's/,/, /g'
+  else
+    printf 'none'
+  fi
+}
+
+sync_dep_lines() {
+  for _sd_id in "$@"; do
+    find_task "$_sd_id" || continue
+    [ "$TASK_STATUS" = done ] && continue
+    grep -q '^\*\*Blocked by:\*\*' "$TASK_PATH" || continue
+    _sd_line="**Blocked by:** $(dep_list "$DEPS_DIR/$_sd_id.blocked-by") · **Blocks:** $(dep_list "$DEPS_DIR/$_sd_id.blocks")."
+    _sd_tmp="$TASK_PATH.tmp.$$"
+    awk -v line="$_sd_line" '
+      !replaced && /^\*\*Blocked by:\*\*/ { print line; replaced = 1; next }
+      { print }
+    ' "$TASK_PATH" > "$_sd_tmp" || { rm -f "$_sd_tmp"; die "cannot update $TASK_PATH"; }
+    mv "$_sd_tmp" "$TASK_PATH"
+  done
+}
+
+remove_blockers() {
+  _rb_id=$1
+  normalize_ids "$2" 'name at least one blocker to remove'
+  ensure_layout
+  acquire_lock
+  require_task "$_rb_id"
+  _rb_status=$TASK_STATUS
+  for _rb_blocker in $NORMALIZED_IDS; do
+    [ "$_rb_blocker" = "$_rb_id" ] && die 'a task cannot block itself'
+    grep -qx "$_rb_blocker" "$DEPS_DIR/$_rb_id.blocked-by" 2>/dev/null ||
+      grep -qx "$_rb_id" "$DEPS_DIR/$_rb_blocker.blocks" 2>/dev/null ||
+      die "$_rb_id is not blocked by $_rb_blocker"
+  done
+  for _rb_blocker in $NORMALIZED_IDS; do
+    remove_dep "$_rb_blocker" "$_rb_id"
+  done
+
+  _rb_result="$_rb_id $_rb_status"
+  if [ "$_rb_status" = blocked ] && [ "$(unresolved_blockers "$_rb_id")" -eq 0 ]; then
+    clear_blockers "$_rb_id"
+    mv "$QUEUE_DIR/blocked/$_rb_id.md" "$QUEUE_DIR/ready/$_rb_id.md" ||
+      die "cannot unblock $_rb_id"
+    _rb_status=ready
+    _rb_result="$_rb_id ready"
+  fi
+  [ "$_rb_status" = on-hold ] && _rb_result="$_rb_id on hold"
+  [ "$_rb_status" = in-progress ] && _rb_result="$_rb_id in progress"
+  [ "$_rb_status" = done ] || set_meta "$QUEUE_DIR/$_rb_status/$_rb_id.md" updated "$TODAY"
+  sync_dep_lines "$_rb_id" $NORMALIZED_IDS
+  index_queue
+  release_lock
+  printf '%s\n' "$_rb_result"
 }
 
 replace_placeholders() {
@@ -571,21 +719,20 @@ cmd_add() {
   if [ "$_add_on_hold" = yes ] && [ -n "$_add_blocked_by" ]; then
     die 'cannot create a held task with blockers; add the task, block it, then hold it'
   fi
+  _add_blockers=''
+  if [ -n "$_add_blocked_by" ]; then
+    normalize_ids "$_add_blocked_by" '--blocked-by needs at least one blocker id'
+    _add_blockers=$NORMALIZED_IDS
+  fi
 
   ensure_layout
   acquire_lock
   [ "$_add_start" = yes ] && require_wip_slot
 
-  _add_blockers=''
-  if [ -n "$_add_blocked_by" ]; then
-    for _add_blocker in $(printf '%s' "$_add_blocked_by" | tr ',' ' '); do
-      _add_blocker=$(printf '%s' "$_add_blocker" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-      valid_id "$_add_blocker" || die "invalid blocker id: $_add_blocker"
-      find_task "$_add_blocker" || die "unknown blocker: $_add_blocker"
-      [ "$TASK_STATUS" = done ] && die "blocker already done: $_add_blocker"
-      _add_blockers="$_add_blockers $_add_blocker"
-    done
-  fi
+  for _add_blocker in $_add_blockers; do
+    find_task "$_add_blocker" || die "unknown blocker: $_add_blocker"
+    [ "$TASK_STATUS" = done ] && die "blocker already done: $_add_blocker"
+  done
 
   _add_id=$(allocate_id)
   if [ "$_add_start" = yes ]; then
@@ -628,12 +775,13 @@ cmd_add() {
   for _add_blocker in $_add_blockers; do
     add_dep "$_add_blocker" "$_add_id"
   done
+  sync_dep_lines "$_add_id" $_add_blockers
 
   if [ "$_add_start" = yes ]; then
     add_active "$_add_id"
   fi
-  release_lock
   index_queue
+  release_lock
   printf '%s\n' "$_add_id"
 }
 
@@ -661,8 +809,8 @@ cmd_start() {
     die "cannot start $_st_id"
   set_meta "$QUEUE_DIR/in-progress/$_st_id.md" updated "$TODAY"
   add_active "$_st_id"
-  release_lock
   index_queue
+  release_lock
   printf '%s\n' "$_st_id in progress"
 }
 
@@ -671,13 +819,25 @@ cmd_block() {
   _bl_id=$1
   shift
   _bl_by=''
+  _bl_remove=''
+  _bl_has_by=no
+  _bl_has_remove=no
   while [ $# -gt 0 ]; do
     case "$1" in
-      --by) [ $# -ge 2 ] || die '--by needs a value'; _bl_by=$2; shift 2 ;;
+      --by) [ $# -ge 2 ] || die '--by needs a value'; _bl_by=$2; _bl_has_by=yes; shift 2 ;;
+      --remove) [ $# -ge 2 ] || die '--remove needs a value'; _bl_remove=$2; _bl_has_remove=yes; shift 2 ;;
       *) die "unknown option: $1" ;;
     esac
   done
-  [ -n "$_bl_by" ] || die 'block requires --by Q-0001[,Q-0002]'
+  [ "$_bl_has_by" = yes ] && [ "$_bl_has_remove" = yes ] &&
+    die 'use either --by or --remove, not both'
+  if [ "$_bl_has_remove" = yes ]; then
+    remove_blockers "$_bl_id" "$_bl_remove"
+    return 0
+  fi
+  [ "$_bl_has_by" = yes ] || die 'block requires --by Q-0001[,Q-0002] or --remove Q-0001[,Q-0002]'
+  normalize_ids "$_bl_by" 'block requires at least one blocker id'
+  _bl_blockers=$NORMALIZED_IDS
 
   ensure_layout
   acquire_lock
@@ -686,14 +846,12 @@ cmd_block() {
   _bl_from=$TASK_STATUS
   [ "$_bl_from" = on-hold ] && die "$_bl_id is on hold; resume it before blocking"
 
-  _bl_blockers=''
-  for _bl_blocker in $(printf '%s' "$_bl_by" | tr ',' ' '); do
-    _bl_blocker=$(printf '%s' "$_bl_blocker" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+  for _bl_blocker in $_bl_blockers; do
     [ "$_bl_blocker" = "$_bl_id" ] && die 'a task cannot block itself'
-    valid_id "$_bl_blocker" || die "invalid blocker id: $_bl_blocker"
     find_task "$_bl_blocker" || die "unknown blocker: $_bl_blocker"
     [ "$TASK_STATUS" = done ] && die "blocker already done: $_bl_blocker"
-    _bl_blockers="$_bl_blockers $_bl_blocker"
+    reaches "$_bl_id" "$_bl_blocker" &&
+      die "$_bl_blocker already waits on $_bl_id; blocking would create a cycle"
   done
   for _bl_blocker in $_bl_blockers; do
     add_dep "$_bl_blocker" "$_bl_id"
@@ -705,39 +863,47 @@ cmd_block() {
       die "cannot block $_bl_id"
   fi
   set_meta "$QUEUE_DIR/blocked/$_bl_id.md" updated "$TODAY"
-  release_lock
+  sync_dep_lines "$_bl_id" $_bl_blockers
   index_queue
+  release_lock
   printf '%s blocked\n' "$_bl_id"
 }
 
 cmd_unblock() {
   [ $# -ge 1 ] || die 'unblock requires a task id'
   _ub_id=$1
+  shift
+  _ub_by=''
+  _ub_has_by=no
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --by) [ $# -ge 2 ] || die '--by needs a value'; _ub_by=$2; _ub_has_by=yes; shift 2 ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  if [ "$_ub_has_by" = yes ]; then
+    remove_blockers "$_ub_id" "$_ub_by"
+    return 0
+  fi
   ensure_layout
   acquire_lock
   require_task "$_ub_id"
   [ "$TASK_STATUS" = blocked ] || die "$_ub_id is $TASK_STATUS, not blocked"
 
   if [ -s "$DEPS_DIR/$_ub_id.blocked-by" ]; then
-    _ub_list="$DEPS_DIR/.unblock.$$"
-    cp "$DEPS_DIR/$_ub_id.blocked-by" "$_ub_list"
     while IFS= read -r _ub_blocker; do
       [ -n "$_ub_blocker" ] || continue
       find_task "$_ub_blocker" || die "unknown blocker: $_ub_blocker"
       [ "$TASK_STATUS" = done ] || die "still blocked by $_ub_blocker"
-    done < "$_ub_list"
-    while IFS= read -r _ub_blocker; do
-      [ -n "$_ub_blocker" ] || continue
-      remove_dep "$_ub_blocker" "$_ub_id"
-    done < "$_ub_list"
-    rm -f "$_ub_list"
+    done < "$DEPS_DIR/$_ub_id.blocked-by"
   fi
-  rm -f "$DEPS_DIR/$_ub_id.blocked-by"
+  clear_blockers "$_ub_id"
   mv "$QUEUE_DIR/blocked/$_ub_id.md" "$QUEUE_DIR/ready/$_ub_id.md" ||
     die "cannot unblock $_ub_id"
   set_meta "$QUEUE_DIR/ready/$_ub_id.md" updated "$TODAY"
-  release_lock
+  sync_dep_lines "$_ub_id" $CLEARED_IDS
   index_queue
+  release_lock
   printf '%s ready\n' "$_ub_id"
 }
 
@@ -758,8 +924,8 @@ cmd_hold() {
   mv "$QUEUE_DIR/$_hd_from/$_hd_id.md" "$QUEUE_DIR/on-hold/$_hd_id.md" ||
     die "cannot hold $_hd_id"
   set_meta "$QUEUE_DIR/on-hold/$_hd_id.md" updated "$TODAY"
-  release_lock
   index_queue
+  release_lock
   printf '%s on hold\n' "$_hd_id"
 }
 
@@ -780,8 +946,8 @@ cmd_resume() {
   mv "$QUEUE_DIR/on-hold/$_rs_id.md" "$QUEUE_DIR/ready/$_rs_id.md" ||
     die "cannot resume $_rs_id"
   set_meta "$QUEUE_DIR/ready/$_rs_id.md" updated "$TODAY"
-  release_lock
   index_queue
+  release_lock
   printf '%s ready\n' "$_rs_id"
 }
 
@@ -816,27 +982,29 @@ cmd_done() {
   set_meta "$_dn_path" summary "$_dn_summary"
 
   _dn_blocks="$DEPS_DIR/$_dn_id.blocks"
+  _dn_dependents=''
   if [ -s "$_dn_blocks" ]; then
     _dn_list="$DEPS_DIR/.done.$$"
     cp "$_dn_blocks" "$_dn_list"
     while IFS= read -r _dn_dependent; do
       [ -n "$_dn_dependent" ] || continue
+      _dn_dependents="$_dn_dependents $_dn_dependent"
       remove_dep "$_dn_id" "$_dn_dependent"
-      if [ ! -s "$DEPS_DIR/$_dn_dependent.blocked-by" ]; then
-        if find_task "$_dn_dependent"; then
-          # Held dependents stay on hold; only blocked ones become ready.
-          if [ "$TASK_STATUS" = blocked ]; then
-            mv "$QUEUE_DIR/blocked/$_dn_dependent.md" "$QUEUE_DIR/ready/$_dn_dependent.md"
-            set_meta "$QUEUE_DIR/ready/$_dn_dependent.md" updated "$TODAY"
-          fi
-        fi
-      fi
+      # Held dependents stay on hold; only blocked ones become ready.
+      find_task "$_dn_dependent" || continue
+      [ "$TASK_STATUS" = blocked ] || continue
+      [ "$(unresolved_blockers "$_dn_dependent")" -eq 0 ] || continue
+      clear_blockers "$_dn_dependent"
+      mv "$QUEUE_DIR/blocked/$_dn_dependent.md" "$QUEUE_DIR/ready/$_dn_dependent.md"
+      set_meta "$QUEUE_DIR/ready/$_dn_dependent.md" updated "$TODAY"
     done < "$_dn_list"
     rm -f "$_dn_list"
   fi
-  rm -f "$DEPS_DIR/$_dn_id.blocks" "$DEPS_DIR/$_dn_id.blocked-by"
-  release_lock
+  clear_blockers "$_dn_id"
+  rm -f "$DEPS_DIR/$_dn_id.blocks"
+  sync_dep_lines $_dn_dependents $CLEARED_IDS
   index_queue
+  release_lock
   printf '%s done\n' "$_dn_id"
 }
 

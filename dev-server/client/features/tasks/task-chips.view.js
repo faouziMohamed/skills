@@ -68,7 +68,11 @@ export function detailActions(task) {
     buttons.push(
       '<button class="btn" type="button" data-detail-action="unblock">Unblock</button>',
     );
-  if (task.status === 'on-hold')
+  if (task.status === 'on-hold' && task.blockedBy.length > 0)
+    buttons.push(
+      `<span class="muted">Waiting on ${escapeHtml(task.blockedBy.join(', '))}; finish or remove it to resume.</span>`,
+    );
+  else if (task.status === 'on-hold')
     buttons.push(
       '<button class="btn primary" type="button" data-detail-action="resume">Resume</button>',
     );
@@ -81,7 +85,11 @@ export function detailActions(task) {
       '<button class="btn" type="button" data-detail-action="hold">Hold</button>',
     );
   }
-  if (task.status === 'ready' || task.status === 'in-progress') {
+  if (task.blockedBy.length > 0) {
+    buttons.push(
+      '<button class="btn" type="button" data-detail-action="block">Edit blockers</button>',
+    );
+  } else if (task.status === 'ready' || task.status === 'in-progress') {
     buttons.push(
       '<button class="btn" type="button" data-detail-action="block">Block</button>',
     );

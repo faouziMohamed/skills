@@ -39,7 +39,7 @@ export async function applyToQueue(proposal) {
     return;
   }
   const payload = {action: proposal.action, summary: proposal.summary};
-  if (proposal.action === 'block') payload.by = proposal.by;
+  if (Array.isArray(proposal.by)) payload.by = proposal.by;
   await applyTaskAction(proposal.task_id, payload);
 }
 
@@ -73,6 +73,10 @@ export function proposalCard(proposal, messageIndex, proposalIndex) {
   } else {
     title = `${proposal.action} · ${proposal.task_id}`;
     detail = proposal.summary || '';
+    if (proposal.by?.length) {
+      const relation = proposal.action === 'unblock' ? 'remove' : 'by';
+      title = `${title} · ${relation} ${proposal.by.join(', ')}`;
+    }
   }
   return `<div class="proposal">
     <div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span></div>

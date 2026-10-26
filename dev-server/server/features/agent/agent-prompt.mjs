@@ -17,6 +17,7 @@ export function systemPrompt(mode, activeTask) {
     '{"type":"upsert_section","task_id":"Q-0001","heading":"Clarifications","content":"- ..."},',
     '{"type":"update_body","task_id":"Q-0001","body":"..."},',
     '{"type":"action","task_id":"Q-0001","action":"start|unblock|hold|resume|done|block","summary":"...","by":["Q-0002"]}]}',
+    'For "block", "by" lists the blockers to add. For "unblock", "by" lists blockers to remove; omit it to unblock a task whose blockers are all done.',
     'Prefer upsert_section over update_body: it replaces one section (or adds it) and keeps the rest of the body.',
     'Use proposals only when the user asks for a change; the human must click Apply.',
   ];

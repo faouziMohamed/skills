@@ -48,7 +48,11 @@ export function initTheme({onChange}) {
   apply(savedTheme());
 }
 
-function resolvedDark() {
+/**
+ * Tells whether the page currently renders in dark mode.
+ * @returns {boolean}
+ */
+export function resolvedDark() {
   if (state.theme === 'dark') return true;
   if (state.theme === 'light') return false;
   return window.matchMedia('(prefers-color-scheme: dark)').matches;

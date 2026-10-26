@@ -118,7 +118,7 @@
  * @property {string} [body]
  * @property {'start' | 'unblock' | 'hold' | 'resume' | 'done' | 'block'} [action]
  * @property {string} [summary]
- * @property {string[]} [by]
+ * @property {string[]} [by] Blockers to add for block, or to remove for unblock.
  * @property {boolean} [applied] Set in the browser once applied.
  */
 

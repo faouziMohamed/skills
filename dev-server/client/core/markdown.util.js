@@ -203,6 +203,12 @@ export function renderMarkdown(source) {
         index += 1;
       }
       index += 1;
+      if (fence[1] === 'mermaid') {
+        output.push(
+          `<div class="mermaid-diagram"><pre><code class="language-mermaid">${escapeHtml(code.join('\n'))}</code></pre></div>`,
+        );
+        continue;
+      }
       const language = fence[1] ? ` class="language-${fence[1]}"` : '';
       output.push(
         `<pre><code${language}>${escapeHtml(code.join('\n'))}</code></pre>`,

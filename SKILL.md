@@ -48,7 +48,8 @@ the project has no `.queue/` yet, run `init` first (see **Setting up a project**
    progress checkboxes, add evidence, record decisions under **Settled**, and keep
    the `**Resume:**` line pointing at the very next action.
 5. **Stuck on something else?** `block Q-0007 --by Q-0003`. When the blocker is
-   done, `done` unblocks dependents automatically.
+   done, `done` unblocks dependents automatically. If a dependency turns out to
+   be wrong, `block Q-0007 --remove Q-0003` drops it.
 6. **Pausing work for now?** `hold Q-0007` parks it out of Ready and `next`;
    `resume Q-0007` returns it to Ready once its blockers are done.
 7. **Finished?** Check the acceptance criteria and, when present, the
@@ -78,8 +79,10 @@ sh <skill-dir>/scripts/queue.sh show Q-0001            # body plus dependencies
 sh <skill-dir>/scripts/queue.sh path Q-0001            # absolute path of the body
 sh <skill-dir>/scripts/queue.sh add "Short title" [--priority 1|2|3] [--blocked-by Q-0002,Q-0003] [--body-file path] [--resume "..."] [--start] [--on-hold]
 sh <skill-dir>/scripts/queue.sh start Q-0001           # ready -> in-progress (up to the WIP limit)
-sh <skill-dir>/scripts/queue.sh block Q-0001 --by Q-0002
+sh <skill-dir>/scripts/queue.sh block Q-0001 --by Q-0002   # refuses a dependency cycle
+sh <skill-dir>/scripts/queue.sh block Q-0001 --remove Q-0002  # drop a blocker; ready once none is open
 sh <skill-dir>/scripts/queue.sh unblock Q-0001         # only when every blocker is done
+sh <skill-dir>/scripts/queue.sh unblock Q-0001 --by Q-0002    # same as block --remove
 sh <skill-dir>/scripts/queue.sh hold Q-0001            # park any open task
 sh <skill-dir>/scripts/queue.sh resume Q-0001          # on hold -> ready, once blockers are done
 sh <skill-dir>/scripts/queue.sh done Q-0001 --summary "..."
@@ -118,6 +121,10 @@ fresh session can continue without searching the codebase:
   recorded trap applies, instead of repeating its explanation in the body.
 - **Outline only.** Describe the approach and file list, not implementation code;
   code belongs in the repository, where it is reviewed and tested.
+- **Diagrams when a flow is hard to follow in prose** — a fenced ` ```mermaid `
+  block (flowchart, sequence, entity-relationship, state…). The browser UI draws
+  it, and the source stays readable in the file and in `show`. Keep labels short
+  and avoid a bare `|` or `#` inside node labels.
 
 ## Rules and why they exist
 
@@ -131,7 +138,10 @@ fresh session can continue without searching the codebase:
   in progress.
 - **Dependencies are explicit.** `deps/<id>.blocked-by` and `deps/<id>.blocks`
   hold both directions; use `block`/`unblock` rather than writing prose like
-  "waiting on X", so `done` can unblock dependents for you.
+  "waiting on X", so `done` can unblock dependents for you. If `verify` reports
+  an asymmetry, `block <id> --remove <blocker>` clears the leftover half. The
+  CLI rewrites the `**Blocked by:** … · **Blocks:** …` line in open task bodies
+  on every dependency change; leave that line to it.
 - **On hold is a deliberate pause.** `hold` parks any open task and frees its
   active slot; `resume` returns it to ready but still refuses while a blocker is
   open. Unlike `blocked`, the pause is the reason, not a dependency.

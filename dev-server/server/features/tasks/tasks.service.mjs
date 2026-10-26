@@ -88,23 +88,28 @@ export function createTasksService({
 
 function actionArgs(id, payload) {
   const action = String(payload.action || '');
+  if (action === 'unblock' && payload.by != null)
+    return ['unblock', id, '--by', blockerList(payload.by, action)];
   if (['start', 'unblock', 'hold', 'resume'].includes(action))
     return [action, id];
   if (action === 'done') {
     const summary = String(payload.summary || '').trim();
     return summary ? ['done', id, '--summary', summary] : ['done', id];
   }
-  if (action === 'block') {
-    const blockers = (Array.isArray(payload.by) ? payload.by : [payload.by])
-      .map(value => String(value || '').trim())
-      .filter(Boolean);
-    if (blockers.length === 0)
-      throw httpError(400, 'block needs at least one blocker');
-    for (const blocker of blockers) {
-      if (!TASK_ID_PATTERN.test(blocker))
-        throw httpError(400, `invalid blocker: ${blocker}`);
-    }
-    return ['block', id, '--by', blockers.join(',')];
-  }
+  if (action === 'block')
+    return ['block', id, '--by', blockerList(payload.by, action)];
   throw httpError(400, `unknown action: ${action}`);
+}
+
+function blockerList(value, action) {
+  const blockers = (Array.isArray(value) ? value : [value])
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+  if (blockers.length === 0)
+    throw httpError(400, `${action} needs at least one blocker`);
+  for (const blocker of blockers) {
+    if (!TASK_ID_PATTERN.test(blocker))
+      throw httpError(400, `invalid blocker: ${blocker}`);
+  }
+  return blockers.join(',');
 }

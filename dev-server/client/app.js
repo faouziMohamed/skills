@@ -1,4 +1,5 @@
 import {applyWorkspaceHeader, render} from './app.view.js';
+import {installMermaid} from './core/mermaid.util.js';
 import {initNavigation} from './core/navigation.js';
 import {$, isTyping, showToast, state} from './core/state.js';
 import {initTheme} from './core/theme.js';
@@ -262,6 +263,7 @@ document.addEventListener('click', event => {
 document.addEventListener('keydown', handleShortcut);
 
 initTheme({onChange: () => render(state)});
+installMermaid();
 navigation.applyRoute();
 loadTasks();
 detectAssistant().then(enabled => {

@@ -12,6 +12,7 @@ export const state = {
   error: '',
   forbidden: false,
   blockTarget: null,
+  blockCurrent: [],
   doneTarget: null,
   theme: 'system',
   initialised: false,

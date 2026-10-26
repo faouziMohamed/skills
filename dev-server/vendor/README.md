@@ -9,5 +9,6 @@ with no build step. Replace a file only together with its version below.
 | `cytoscape.min.js` | cytoscape 3.30.2 (`dist/cytoscape.min.js`) | MIT |
 | `dagre.min.js` | dagre 0.8.5 (`dist/dagre.min.js`) | MIT |
 | `cytoscape-dagre.js` | cytoscape-dagre 2.5.0 | MIT |
+| `mermaid.min.js` | mermaid 11.17.2 (`dist/mermaid.min.js`) | MIT |
 
 Refresh: `npm pack <package>@<version>`, extract, copy the file listed above.

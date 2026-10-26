@@ -9,6 +9,14 @@ export function loadECharts() {
 }
 
 /**
+ * Loads the vendored Mermaid library once.
+ * @returns {Promise<any>} The `mermaid` global.
+ */
+export function loadMermaid() {
+  return loadScripts(['/vendor/mermaid.min.js']).then(() => window.mermaid);
+}
+
+/**
  * Loads the vendored Cytoscape.js with the dagre layout once.
  * @returns {Promise<any>} The `cytoscape` factory.
  */

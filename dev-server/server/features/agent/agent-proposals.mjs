@@ -94,11 +94,18 @@ function actionProposal(proposal) {
       .trim()
       .slice(0, 4000),
   };
+  const blockers = (Array.isArray(proposal.by) ? proposal.by : [])
+    .map(value => String(value).trim().toUpperCase())
+    .filter(value => TASK_ID_PATTERN.test(value));
   if (proposal.action === 'block') {
-    action.by = (Array.isArray(proposal.by) ? proposal.by : [])
-      .map(value => String(value))
-      .filter(value => TASK_ID_PATTERN.test(value));
-    if (action.by.length === 0) return undefined;
+    if (blockers.length === 0) return undefined;
+    action.by = blockers;
+  }
+  // Dropping a bad id would turn "remove this blocker" into a plain unblock.
+  if (proposal.action === 'unblock' && Array.isArray(proposal.by)) {
+    if (blockers.length !== proposal.by.length || blockers.length === 0)
+      return undefined;
+    action.by = blockers;
   }
   return action;
 }

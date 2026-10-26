@@ -75,6 +75,12 @@ Drag a card to transition it through the CLI:
 - **Awaiting production** is derived from a production gate, so it is not a
   meaningful drop target; the UI explains that instead of moving the task.
 
+**Block** on a task without blockers opens the same picker. A task that already
+has blockers shows **Edit blockers** instead: its current blockers start ticked,
+unticking one calls `block --remove`, and ticking another adds it with `block
+--by`. Tasks that already wait on this one are left out, since they would form a
+cycle. On a held task you can only remove blockers; resume it to add new ones.
+
 **Show done** expands the collapsed Done column. In workspace mode, the
 repository filter narrows every column. On touch devices the columns swipe
 horizontally, dragging is disabled, and tapping a card opens the drawer where
@@ -157,9 +163,14 @@ files into pointers, so the whole workspace shares one searchable record.
   highlights everything upstream and downstream; clicking opens it. Filters:
   repository, show done, tasks without dependencies; the top search highlights
   matching tasks.
+- Fenced ` ```mermaid ` blocks in task bodies, pitfalls and chat are drawn as
+  diagrams (Mermaid, `securityLevel: strict`, light or dark to match the page).
+  Wide diagrams keep their size and scroll inside their frame; a "Diagram
+  source" toggle shows the text, and a diagram that fails to parse stays as
+  source with the parser's first error line.
 - Charts use Apache ECharts and the graph uses Cytoscape.js with the dagre
-  layout. Pinned copies live in `dev-server/vendor/` (versions and licenses in
-  its README) and load only when one of these views opens, so the UI stays
+  layout. Pinned copies of these and Mermaid live in `dev-server/vendor/` (versions
+  and licenses in its README) and load only when a view needs them, so the UI stays
   offline-capable with no build step.
 - Status colors are the `--status-*` tokens in `styles.css` (blue in progress,
   green ready, red blocked, amber on hold, purple awaiting production, gray

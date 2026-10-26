@@ -27,24 +27,49 @@ export function initTaskActions({
     }
   }
 
+  async function updateBlockers(id, added, removed) {
+    try {
+      if (added.length > 0)
+        await applyTaskAction(id, {action: 'block', by: added});
+      if (removed.length > 0)
+        await applyTaskAction(id, {action: 'unblock', by: removed});
+      showToast(blockerChangeMessage(added, removed), 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+    await reloadActiveTask(id);
+  }
+
   function openBlockDialog(id) {
     const target = state.tasks.find(task => task.id === id);
-    const candidates = state.tasks.filter(
-      task => task.status !== 'done' && task.id !== id,
-    );
+    const current = target ? target.blockedBy : [];
+    const canAdd = target?.status !== 'on-hold';
+    const waiting = dependentsOf(id, state.tasks);
+    const candidates = canAdd
+      ? state.tasks.filter(
+          task =>
+            task.status !== 'done' &&
+            task.id !== id &&
+            !current.includes(task.id) &&
+            !waiting.has(task.id),
+        )
+      : [];
+    const editing = current.length > 0;
     state.blockTarget = id;
-    $('#block-options').innerHTML = candidates.length
-      ? candidates
-          .map(
-            task => `<label class="check-item">
-          <input type="checkbox" name="blocker" value="${task.id}">
-          <span><strong>${escapeHtml(task.id)} · ${escapeHtml(task.title)}</strong><small>${escapeHtml(task.status)} · ${escapeHtml(task.resume)}</small></span>
-        </label>`,
-          )
-          .join('')
+    state.blockCurrent = [...current];
+    $('#block-title').textContent = editing
+      ? `Blockers of ${id}`
+      : `Block ${id}`;
+    $('#block-hint').textContent = blockHint(editing, canAdd);
+    $('#block-submit').textContent = editing ? 'Save blockers' : 'Block task';
+    const options = [
+      ...current.map(blockerId => blockerOption(blockerId, true)),
+      ...candidates.map(task => blockerOption(task.id, false)),
+    ];
+    $('#block-options').innerHTML = options.length
+      ? options.join('')
       : '<p class="muted">No other open task is available as a blocker.</p>';
     if (!blockDialog.open) blockDialog.showModal();
-    if (target) $('#block-dialog h2').textContent = `Block ${target.id}`;
   }
 
   function openDoneDialog(id) {
@@ -130,19 +155,21 @@ export function initTaskActions({
 
   $('#block-form').addEventListener('submit', async event => {
     event.preventDefault();
-    const checked = [
+    const chosen = [
       ...event.currentTarget.querySelectorAll('[name="blocker"]:checked'),
-    ];
-    if (!checked.length) {
-      showToast('Choose at least one blocker.', 'error');
+    ].map(input => input.value);
+    const current = state.blockCurrent;
+    const added = chosen.filter(id => !current.includes(id));
+    const removed = current.filter(id => !chosen.includes(id));
+    if (added.length === 0 && removed.length === 0) {
+      const message = current.length
+        ? 'The blockers are unchanged.'
+        : 'Choose at least one blocker.';
+      showToast(message, 'error');
       return;
     }
     blockDialog.close();
-    await runAction(
-      state.blockTarget,
-      {action: 'block', by: checked.map(input => input.value)},
-      'Task blocked.',
-    );
+    await updateBlockers(state.blockTarget, added, removed);
   });
 
   $('#done-form').addEventListener('submit', async event => {
@@ -157,4 +184,41 @@ export function initTaskActions({
   });
 
   return {handleDetailAction, saveTaskBody, copyTaskLink, openAddDialog};
+}
+
+function dependentsOf(id, tasks) {
+  const found = new Set();
+  const pending = [id];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    for (const task of tasks) {
+      if (!task.blockedBy.includes(current) || found.has(task.id)) continue;
+      found.add(task.id);
+      pending.push(task.id);
+    }
+  }
+  return found;
+}
+
+function blockerOption(id, checked) {
+  const task = state.tasks.find(item => item.id === id);
+  const title = task ? task.title : 'Not in the queue';
+  const detail = task ? `${task.status} · ${task.resume}` : 'Missing task';
+  return `<label class="check-item">
+    <input type="checkbox" name="blocker" value="${escapeHtml(id)}"${checked ? ' checked' : ''}>
+    <span><strong>${escapeHtml(id)} · ${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span>
+  </label>`;
+}
+
+function blockHint(editing, canAdd) {
+  if (!editing) return 'Choose the task or tasks that must finish first.';
+  if (!canAdd)
+    return 'Untick a blocker to remove it. Resume the task to add new blockers.';
+  return 'Untick a blocker to remove it, or tick another task that must finish first.';
+}
+
+function blockerChangeMessage(added, removed) {
+  if (removed.length === 0) return 'Task blocked.';
+  if (added.length === 0) return `Removed ${removed.join(', ')}.`;
+  return 'Blockers updated.';
 }

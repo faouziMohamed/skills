@@ -342,11 +342,15 @@
             <svg class="icon"><use href="#i-close" /></svg>
           </button>
         </div>
-        <p class="muted">Choose the task or tasks that must finish first.</p>
+        <p id="block-hint" class="muted">
+          Choose the task or tasks that must finish first.
+        </p>
         <div id="block-options" class="check-list"></div>
         <div class="modal-actions">
           <button class="btn ghost" type="button" data-close>Cancel</button>
-          <button class="btn danger" type="submit">Block task</button>
+          <button id="block-submit" class="btn danger" type="submit">
+            Block task
+          </button>
         </div>
       </form>
     </dialog>
