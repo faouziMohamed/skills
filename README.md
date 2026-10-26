@@ -1,6 +1,21 @@
+# Skills
+
+Agent skills, one folder each under `skills/`.
+
+| Skill                                            | Use it for                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| [`queue-manager`](skills/queue-manager/SKILL.md) | A task queue in your repository that survives across agent sessions. |
+
+Install one skill, or run `npx skills add faouziMohamed/skills` to pick from
+the list:
+
+```sh
+npx skills add faouziMohamed/skills --skill queue-manager
+```
+
 # queue-manager
 
-[![skills.sh installs](https://skills.sh/b/faouziMohamed/queue-manager)](https://skills.sh/faouziMohamed/queue-manager)
+[![skills.sh installs](https://skills.sh/b/faouziMohamed/skills/queue-manager)](https://skills.sh/faouzimohamed/skills/queue-manager)
 
 A task queue for coding agents that lives in your repository as plain files.
 Each task is one Markdown file, its folder is its status, and a small POSIX
@@ -13,21 +28,26 @@ dependency graph and a pitfalls browser linked to the tasks that hit each
 lesson. Queue settings → **Design** switches between the Jira-style layout and
 the original classic sidebar.
 
-## Skill
-
-| Name            | Use it for                                                                                                                                                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `queue-manager` | Resuming, adding, blocking, unblocking, holding, resuming and finishing tasks; keeping `QUEUE.md` current; opening the browser UI, including the pitfalls browser. |
-
 ## Install
 
 ```sh
-npx skills add faouziMohamed/queue-manager
+npx skills add faouziMohamed/skills --skill queue-manager
 ```
 
-Or copy this folder into your agent's skills directory, for example
+Or copy `skills/queue-manager/` into your agent's skills directory, for example
 `.claude/skills/queue-manager/` in a project or `~/.claude/skills/queue-manager/`
 for every project.
+
+The skill folder holds everything it needs:
+
+```text
+skills/queue-manager/
+  SKILL.md       what the agent follows
+  scripts/       queue.sh, the POSIX CLI
+  dev-server/    the optional browser UI (Node.js, no dependencies)
+  references/    UI and assistant guides the agent reads on demand
+  assets/        templates that init copies into a project
+```
 
 ## Quick start
 
@@ -53,8 +73,9 @@ sh .claude/skills/queue-manager/scripts/queue.sh ui open
 ## Requirements
 
 - **CLI:** any POSIX shell and standard tools (no Node.js, no database).
-- **Browser UI:** Node.js 22.13+ and `curl`. No `npm install`; chart and graph
-  libraries are vendored in `dev-server/vendor/`.
+- **Browser UI:** Node.js 22.13+ and `curl`. No `npm install`. The first
+  `ui start` needs internet access once to download the chart, graph and diagram
+  libraries (about 5 MB, see Privacy below).
 - **In-browser assistant (optional):** an installed `claude` or `codex` CLI, or
   an API key for Anthropic, OpenAI or DeepSeek. With none configured, the
   assistant is hidden.
@@ -78,8 +99,17 @@ Whether you commit `.queue/` and `QUEUE.md` is up to you.
 - The CLI writes only `.queue/` data and `QUEUE.md`; it never touches project
   source.
 - The browser UI listens on `127.0.0.1` only and refuses other clients. It
-  writes only inside `.queue/` and task files, and runs no Git or database
-  commands.
+  writes only inside `.queue/`, task files and its library cache, and runs no
+  Git or database commands.
+- On first start the UI server downloads five pinned browser libraries
+  (ECharts, Cytoscape.js, dagre, cytoscape-dagre and Mermaid) from jsDelivr,
+  falling back to unpkg, and rejects any file whose SHA-256 differs from the
+  pinned one. They are cached per user in
+  `${XDG_CACHE_HOME:-~/.cache}/queue-manager/vendor/` and reused by every
+  project; the browser only ever loads them from `127.0.0.1`. Without internet,
+  the board, lists and task pages still work; only charts, the graph and
+  diagrams show a Retry. See `references/dev-server.md` to place the files by
+  hand.
 - To show which agent sessions discussed a task, the UI reads local Claude Code
   (`~/.claude/projects`) and Codex (`~/.codex/sessions`) transcripts, limited to
   sessions whose working directory is inside this project. Set
@@ -92,18 +122,21 @@ Whether you commit `.queue/` and `QUEUE.md` is up to you.
 
 ## Documentation
 
+All paths below are inside `skills/queue-manager/`.
+
 - `SKILL.md` — what the agent follows: workflow, commands and rules.
 - `references/dev-server.md` — the browser UI.
 - `references/assistant.md` — the in-browser assistant and its providers.
 
 ## Testing
 
-The eval suite in `evals/` is kept local: the folder is git-ignored and is not
-part of the published skill. With the suite present, it runs the skill against
-fixture projects and grades the resulting queue files and tool use:
+The eval suite in `skills/queue-manager/evals/` is kept local: the folder is
+git-ignored and is not part of the published skill. With the suite present, it
+runs the skill against fixture projects and grades the resulting queue files and
+tool use:
 
 ```sh
-claude plugin eval . --scaffold --allow-tools Bash Write Edit
+claude plugin eval skills/queue-manager --scaffold --allow-tools Bash Write Edit
 ```
 
 It reports each case twice: with the skill loaded and against a no-skill
@@ -120,5 +153,6 @@ npx skills experimental_install
 
 ## License
 
-MIT. Bundled libraries keep their own licenses (ECharts is Apache-2.0;
-Cytoscape.js, dagre and cytoscape-dagre are MIT); see `dev-server/vendor/README.md`.
+MIT. The downloaded browser libraries keep their own licenses (ECharts is
+Apache-2.0; Cytoscape.js, dagre, cytoscape-dagre and Mermaid are MIT); see
+`skills/queue-manager/dev-server/vendor/README.md`.

@@ -187,4 +187,24 @@
  * @property {number} queueVersion
  */
 
+/**
+ * A browser library the server downloads once and serves from `/vendor/`.
+ * @typedef {object} VendorLibrary
+ * @property {string} file Name served under `/vendor/`.
+ * @property {string} packageName npm package it comes from.
+ * @property {string} version Pinned package version.
+ * @property {string} packagePath File path inside the package.
+ * @property {number} size Exact size in bytes.
+ * @property {string} sha256 Hex SHA-256 of the file.
+ * @property {string} license SPDX license of the package.
+ */
+
+/**
+ * The per-user library cache shared by the server entry point and static files.
+ * @typedef {object} VendorCache
+ * @property {string} cacheDir Folder holding `<package>@<version>/<file>`.
+ * @property {(file: string) => Promise<string | undefined>} resolve Absolute path of a verified copy, downloading it first if needed; undefined for a file that is not a pinned library.
+ * @property {() => Promise<{file: string, error?: string}[]>} prefetch Downloads every missing library in parallel and reports failures.
+ */
+
 export {};

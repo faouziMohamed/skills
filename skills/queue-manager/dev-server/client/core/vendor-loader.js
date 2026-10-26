@@ -1,30 +1,36 @@
+import {ASSETS} from '../../shared/routes.constant.mjs';
+
 const loading = new Map();
 
 /**
- * Loads the vendored ECharts library once.
+ * Loads the downloaded ECharts library once.
  * @returns {Promise<any>} The `echarts` global.
  */
 export function loadECharts() {
-  return loadScripts(['/vendor/echarts.min.js']).then(() => window.echarts);
+  return loadScripts([ASSETS.vendor('echarts.min.js')]).then(
+    () => window.echarts,
+  );
 }
 
 /**
- * Loads the vendored Mermaid library once.
+ * Loads the downloaded Mermaid library once.
  * @returns {Promise<any>} The `mermaid` global.
  */
 export function loadMermaid() {
-  return loadScripts(['/vendor/mermaid.min.js']).then(() => window.mermaid);
+  return loadScripts([ASSETS.vendor('mermaid.min.js')]).then(
+    () => window.mermaid,
+  );
 }
 
 /**
- * Loads the vendored Cytoscape.js with the dagre layout once.
+ * Loads the downloaded Cytoscape.js with the dagre layout once.
  * @returns {Promise<any>} The `cytoscape` factory.
  */
 export async function loadCytoscape() {
   await loadScripts([
-    '/vendor/cytoscape.min.js',
-    '/vendor/dagre.min.js',
-    '/vendor/cytoscape-dagre.js',
+    ASSETS.vendor('cytoscape.min.js'),
+    ASSETS.vendor('dagre.min.js'),
+    ASSETS.vendor('cytoscape-dagre.js'),
   ]);
   const cytoscape = window.cytoscape;
   if (!cytoscape('layout', 'dagre') && window.cytoscapeDagre)

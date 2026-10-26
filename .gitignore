@@ -197,7 +197,7 @@ Temporary Items
 .apdisk
 
 /.claude/
-/evals/
+/skills/*/evals/
 /mock/
 /.agents/
 /CLAUDE.md

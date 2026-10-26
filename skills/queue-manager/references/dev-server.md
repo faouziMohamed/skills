@@ -169,9 +169,13 @@ files into pointers, so the whole workspace shares one searchable record.
   source" toggle shows the text, and a diagram that fails to parse stays as
   source with the parser's first error line.
 - Charts use Apache ECharts and the graph uses Cytoscape.js with the dagre
-  layout. Pinned copies of these and Mermaid live in `dev-server/vendor/` (versions
-  and licenses in its README) and load only when a view needs them, so the UI stays
-  offline-capable with no build step.
+  layout. These and Mermaid are not shipped with the skill: on first start the
+  server downloads the pinned versions from jsDelivr (unpkg as fallback),
+  checks each SHA-256, and caches them in
+  `${XDG_CACHE_HOME:-~/.cache}/queue-manager/vendor/` for every project
+  (versions, licenses and offline setup in `dev-server/vendor/README.md`). They
+  load only when a view needs them. Without them, the graph, the insights charts
+  and diagrams show an error with **Retry**; everything else keeps working.
 - Status colors are the `--status-*` tokens in `styles.css` (blue in progress,
   green ready, red blocked, amber on hold, purple awaiting production, gray
   done). The graph legend, node borders, task rails and insights all read them
@@ -184,9 +188,10 @@ files into pointers, so the whole workspace shares one searchable record.
   for Discussions, local Claude Code (`~/.claude/projects`) and Codex
   (`~/.codex/sessions`) transcripts whose working directory is inside this
   project. `QUEUE_AGENT_SESSIONS=off` turns the transcript lookup off.
-- It writes only inside `.queue/` and the task files, never runs Git or
-  database commands, and loads no code from the network (`dev-server/vendor/`
-  holds pinned copies of its libraries).
+- It writes only inside `.queue/`, the task files and its library cache, and
+  never runs Git or database commands. Its only outbound requests are the
+  one-time library downloads above; the browser loads code from `127.0.0.1`
+  only.
 
 ## Code layout
 
@@ -201,10 +206,11 @@ JSDoc types (`Task`, `Workspace`, `Chat`, `Proposal`…) live in
   pitfalls, sessions, discussions) splits each domain into a controller (HTTP),
   a service (rules) and a repository (files or SQLite).
 - `server/http/` holds the router, JSON helpers and static file serving;
-  `server/infrastructure/` runs `queue.sh`, opens SQLite and loads `agent.env`.
+  `server/infrastructure/` runs `queue.sh`, opens SQLite, loads `agent.env` and
+  downloads and caches the browser libraries (`vendor-cache.mjs`).
 - `client/app.js` starts the page and `client/app.view.js` renders the shell.
   `client/core/` holds the API client, state, router and shared helpers;
   `client/features/<domain>/` holds that domain's API service and views.
 
-Only `client/`, `shared/`, `vendor/`, `index.html` and `styles.css` are served
-to the browser; server code never is.
+Only `client/`, `shared/`, `index.html`, `styles.css` and the cached libraries
+under `/vendor/` are served to the browser; server code never is.

@@ -63,6 +63,14 @@ export const ENDPOINTS = {
   },
 };
 
+export const ASSET_ROUTES = {
+  vendor: '/vendor/:file',
+};
+
+export const ASSETS = {
+  vendor: file => buildPath(ASSET_ROUTES.vendor, {file}),
+};
+
 export const PAGES = {
   section: section => buildPath(PAGE_ROUTES.section, {section}),
   task: taskId => buildPath(PAGE_ROUTES.task, {taskId}),

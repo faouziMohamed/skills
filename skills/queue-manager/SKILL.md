@@ -204,7 +204,9 @@ quick-look drawer, a full task page
 with a per-task clarification chat and related agent sessions, a pitfalls browser
 linked to the tasks that mention each `PIT-` ID, insights charts and a zoomable
 dependency graph. Status changes still go through the CLI; body edits write the
-task file directly.
+task file directly. The first start downloads about 5 MB of chart, graph and
+diagram libraries once per machine; offline, those three views show **Retry**
+and the rest works.
 
 - For running, using or changing the UI, read `references/dev-server.md`.
 - For the in-browser assistant (providers, API keys, chat history, Clarify

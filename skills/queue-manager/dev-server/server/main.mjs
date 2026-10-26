@@ -19,6 +19,7 @@ import {createStaticFiles} from './http/static-files.mjs';
 import {loadAgentEnv} from './infrastructure/agent-env.mjs';
 import {createDatabase} from './infrastructure/database.mjs';
 import {createQueueCli} from './infrastructure/queue-cli.mjs';
+import {createVendorCache} from './infrastructure/vendor-cache.mjs';
 
 const uiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillDir = path.resolve(uiDir, '..');
@@ -71,7 +72,8 @@ registerTasksRoutes(router, services);
 registerDiscussionsRoutes(router, services);
 registerPitfallsRoutes(router, services);
 registerSessionsRoutes(router, services);
-const serveStatic = createStaticFiles(uiDir);
+const vendorCache = createVendorCache();
+const serveStatic = createStaticFiles(uiDir, vendorCache);
 
 const server = createServer(async (request, response) => {
   try {
@@ -90,6 +92,10 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => {
+server.listen(port, '127.0.0.1', async () => {
   console.log(`queue dev server: http://127.0.0.1:${port} (${root})`);
+  for (const {file, error} of await vendorCache.prefetch()) {
+    if (error) console.error(`vendor ${file}: ${error}`);
+  }
+  console.log(`vendor libraries: ${vendorCache.cacheDir}`);
 });

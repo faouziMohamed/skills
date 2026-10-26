@@ -24,6 +24,19 @@ export function installMermaid() {
   window
     .matchMedia('(prefers-color-scheme: dark)')
     .addEventListener('change', redrawAll);
+  document.addEventListener('click', retryLoad);
+  schedule();
+}
+
+function retryLoad(event) {
+  const button = event.target.closest('[data-mermaid-retry]');
+  if (!button) return;
+  for (const container of document.querySelectorAll(
+    '.mermaid-diagram[data-rendered="load-error"]',
+  )) {
+    container.querySelector('.mermaid-error')?.remove();
+    delete container.dataset.rendered;
+  }
   schedule();
 }
 
@@ -56,7 +69,7 @@ async function drawPending() {
   try {
     mermaid = await loadMermaid();
   } catch (error) {
-    containers.forEach(container => showFailure(container, error));
+    containers.forEach(container => showLoadFailure(container, error));
     return;
   }
   mermaid.initialize({
@@ -91,11 +104,22 @@ function keepNaturalWidth(svg) {
   svg.style.width = `${Math.ceil(width)}px`;
 }
 
+function showLoadFailure(container, error) {
+  const retry =
+    '<button class="btn" type="button" data-mermaid-retry>Retry</button>';
+  showError(container, 'load-error', 'Diagrams could not load', error, retry);
+}
+
 function showFailure(container, error) {
-  container.dataset.rendered = 'error';
+  showError(container, 'error', 'Diagram could not be drawn', error, '');
+}
+
+function showError(container, rendered, label, error, actions) {
+  container.dataset.rendered = rendered;
   const message = String(error?.message ?? error).split('\n')[0];
+  const text = `${label}: ${escapeHtml(message)}`;
   container.insertAdjacentHTML(
     'beforeend',
-    `<p class="mermaid-error" role="status">Diagram could not be drawn: ${escapeHtml(message)}</p>`,
+    `<p class="mermaid-error" role="status">${text} ${actions}</p>`,
   );
 }
