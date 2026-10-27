@@ -1,6 +1,6 @@
 ---
 name: queue-manager
-description: A plain-file task queue that lives in the repository (.queue/ plus a generated QUEUE.md) so work survives across agent sessions. Use it whenever the user wants to resume or "pick up where we left off", asks what to work on next, agrees on work that should be tracked for later, starts, blocks, unblocks, holds, resumes or finishes a task, records progress or decisions on a task, sets dependencies or a production gate, regenerates or verifies QUEUE.md, or wants to open the queue's browser UI (task pages, clarification chat, pitfalls browser, insights, dependency graph). Use it whenever the user asks about a known trap, a pitfall, `PITFALLS.md` or a `PIT-###` lesson. Use it even when the user just says "add this to the queue", "what's next?" or "continue". Not for Jira, Linear or GitHub Issues unless the user wants the local queue too.
+description: Plain-file task queue for coding agents, kept in the repository (`.queue/` plus a generated `QUEUE.md`) so work survives across sessions. A POSIX CLI owns every status change; an optional localhost UI adds a board, task pages, insights and a dependency graph. Use when the user wants to resume or "pick up where we left off", asks what's next, says "add this to the queue" or "continue", starts, blocks, unblocks, holds, resumes or finishes a task, records progress or decisions, adds or removes dependencies or a production gate, regenerates or verifies `QUEUE.md`, opens the queue UI, or asks about a pitfall, `PITFALLS.md` or a `PIT-###` lesson. Not for Jira, Linear or GitHub Issues unless the user also wants the local queue.
 license: MIT
 compatibility: POSIX shell for the CLI. The optional browser UI needs Node.js 22.13+ and curl.
 metadata:
@@ -207,6 +207,13 @@ dependency graph. Status changes still go through the CLI; body edits write the
 task file directly. The first start downloads about 5 MB of chart, graph and
 diagram libraries once per machine; offline, those three views show **Retry**
 and the rest works.
+
+Those libraries are a fixed list of npm packages at pinned versions, fetched
+by the local UI server from jsDelivr (unpkg as fallback). The server accepts a
+file only when its size and SHA-256 match the values pinned in
+`dev-server/server/infrastructure/vendor-cache.mjs`, and the browser page is the
+only thing that runs them. You never run, read or follow anything downloaded,
+and `queue.sh` makes no network requests.
 
 - For running, using or changing the UI, read `references/dev-server.md`.
 - For the in-browser assistant (providers, API keys, chat history, Clarify

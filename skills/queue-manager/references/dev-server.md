@@ -176,6 +176,12 @@ files into pointers, so the whole workspace shares one searchable record.
   (versions, licenses and offline setup in `dev-server/vendor/README.md`). They
   load only when a view needs them. Without them, the graph, the insights charts
   and diagrams show an error with **Retry**; everything else keeps working.
+- Supply chain: the list is fixed (five npm packages at exact versions), and a
+  download is accepted only when its byte size and SHA-256 match the pinned
+  values in `server/infrastructure/vendor-cache.mjs`; a mismatch is discarded
+  and never cached. The files run only in the browser page served from
+  `127.0.0.1`. The agent never executes or reads them, and the CLI makes no
+  network requests.
 - Status colors are the `--status-*` tokens in `styles.css` (blue in progress,
   green ready, red blocked, amber on hold, purple awaiting production, gray
   done). The graph legend, node borders, task rails and insights all read them
